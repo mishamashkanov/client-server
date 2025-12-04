@@ -1,26 +1,18 @@
 package csdev;
 
-/**
- * Результат подключения
- */
 public class MessageConnectResult extends Message {
     private static final long serialVersionUID = 1L;
-
-    public boolean success;
+    
     public String errorMessage;
     public String currentDirectory;
-
+    
     public MessageConnectResult() {
         super(Protocol.RESULT_OK);
-        this.success = true;
-        this.errorMessage = "";
-        this.currentDirectory = System.getProperty("user.dir");
+        this.errorMessage = null;
     }
-
-    public MessageConnectResult(String error) {
+    
+    public MessageConnectResult(String errorMessage) {
         super(Protocol.RESULT_ERROR);
-        this.success = false;
-        this.errorMessage = error;
-        this.currentDirectory = "";
+        this.errorMessage = errorMessage;
     }
 }
