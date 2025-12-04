@@ -1,4 +1,4 @@
-package remoteshell;
+package csdev.client;
 
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -25,25 +25,25 @@ public class ResponseReader {
                 try {
                     int resultCode = in.readInt();
                     
-                    if (resultCode == ProtocolConstants.RESULT_OK) {
+                    if (resultCode == Protocol.RESULT_OK) {
                         int dataLength = in.readInt();
                         
-                        if (dataLength > ProtocolConstants.MAX_RESPONSE_LENGTH) {
+                        if (dataLength > Protocol.MAX_RESPONSE_LENGTH) {
                             throw new IOException("Response too large");
                         }
                         
                         if (dataLength > 0) {
                             byte[] data = new byte[dataLength];
                             in.readFully(data);
-                            String response = new String(data, ProtocolConstants.ENCODING);
+                            String response = new String(data, Protocol.ENCODING);
                             responseHandler.accept(response);
                         }
-                    } else if (resultCode == ProtocolConstants.RESULT_ERROR) {
+                    } else if (resultCode == Protocol.RESULT_ERROR) {
                         int errorLength = in.readInt();
                         if (errorLength > 0) {
                             byte[] errorData = new byte[errorLength];
                             in.readFully(errorData);
-                            String error = new String(errorData, ProtocolConstants.ENCODING);
+                            String error = new String(errorData, Protocol.ENCODING);
                             responseHandler.accept("ERROR: " + error);
                         }
                     }
