@@ -1,120 +1,172 @@
 package csdev.client;
 
-import java.io.IOException;
-import java.net.Socket;
+import csdev.*;
+import java.io.*;
+import java.net.*;
 import java.util.Scanner;
 import csdev.*;
 
 public class RemoteShellClient {
     private Socket socket;
-    private CommandWriter commandWriter;
-    private ResponseReader responseReader;
+    private ObjectOutputStream out;
+    private ObjectInputStream in;
     private Scanner consoleScanner;
-    private boolean running;
+    private boolean connected;
+    private String username;
     
-    public RemoteShellClient(String host, int port) throws IOException {
+    public RemoteShellClient(String host, int port, String username, String fullName) 
+            throws IOException, ClassNotFoundException {
+        this.username = username;
+        this.consoleScanner = new Scanner(System.in);
+        
+        System.out.println("Connecting to " + host + ":" + port + "...");
         this.socket = new Socket(host, port);
         this.socket.setSoTimeout(Protocol.SOCKET_TIMEOUT);
-        this.commandWriter = new CommandWriter(socket);
-        this.responseReader = new ResponseReader(socket, this::handleResponse);
-        this.consoleScanner = new Scanner(System.in);
-        this.running = true;
+        
+        this.out = new ObjectOutputStream(socket.getOutputStream());
+        this.in = new ObjectInputStream(socket.getInputStream());
+        
+        // Подключаемся к серверу
+        MessageConnect connectMsg = new MessageConnect(username, fullName);
+        out.writeObject(connectMsg);
+        out.flush();
+        
+        // Получаем ответ
+        MessageConnectResult connectResult = (MessageConnectResult) in.readObject();
+        if (connectResult.getID() == Protocol.RESULT_ERROR) {
+            throw new IOException("Connection rejected: " + connectResult.errorMessage);
+        }
+        
+        this.connected = true;
+        System.out.println("Connected as: " + username + " (" + fullName + ")");
+        
+        // Получаем приветственное сообщение
+        readServerResponse();
     }
     
     public void start() {
         printWelcomeMessage();
         
         try {
-            while (running && commandWriter.isConnected() && 
-                   responseReader.isActive() && consoleScanner.hasNextLine()) {
-                
+            while (connected && consoleScanner.hasNextLine()) {
                 System.out.print(Protocol.PROMPT);
                 String input = consoleScanner.nextLine();
                 processCommand(input);
             }
         } finally {
-            cleanup();
+            disconnect();
         }
     }
     
     private void processCommand(String input) {
-        CommandParser.ParsedCommand parsed = CommandParser.parse(input);
+        if (input == null || input.trim().isEmpty()) {
+            return;
+        }
+        
+        String command = input.trim();
+        String lowerCommand = command.toLowerCase();
         
         try {
-            switch (parsed.getType()) {
-                case EXIT:
-                    handleExit();
-                    break;
-                case CLIENT_CLEAR:
-                    clearScreen();
-                    break;
-                case HELP:
-                    printHelp();
-                    break;
-                case CHANGE_DIR:
-                    if (parsed.getArgument().isEmpty()) {
-                        System.out.println("Usage: cd <directory>");
-                    } else {
-                        commandWriter.sendChangeDirectory(parsed.getArgument());
-                    }
-                    break;
-                case PRINT_DIR:
-                    commandWriter.sendPwdCommand();
-                    break;
-                case LIST_FILES:
-                    commandWriter.sendLsCommand(parsed.getArgument());
-                    break;
-                case LIST_USERS:
-                    commandWriter.sendListUsers();
-                    break;
-                case EXECUTE:
-                    if (!parsed.getArgument().isEmpty()) {
-                        commandWriter.sendCommand(parsed.getArgument());
-                    }
-                    break;
+            if (lowerCommand.equals("exit") || lowerCommand.equals("quit")) {
+                sendDisconnect();
+                return;
+            } else if (lowerCommand.equals("help") || lowerCommand.equals("?")) {
+                sendHelpCommand();
+                return;
+            } else if (lowerCommand.equals("clear") || lowerCommand.equals("cls")) {
+                clearScreen();
+                return;
+            } else if (lowerCommand.equals("list") || lowerCommand.equals("users")) {
+                sendListUsers();
+                return;
+            } else if (lowerCommand.startsWith("cd ")) {
+                String path = command.substring(3).trim();
+                if (path.isEmpty()) {
+                    System.out.println("Usage: cd <directory>");
+                } else {
+                    sendExecuteCommand("cd " + path);
+                }
+                return;
+            } else if (lowerCommand.equals("pwd")) {
+                sendExecuteCommand("pwd");
+                return;
+            } else if (lowerCommand.startsWith("ls")) {
+                String args = command.length() > 2 ? command.substring(2).trim() : "";
+                sendExecuteCommand("ls " + args);
+                return;
+            } else {
+                // Обычная команда
+                sendExecuteCommand(command);
             }
-        } catch (IOException e) {
+        } catch (IOException | ClassNotFoundException e) {
             System.err.println("Error: " + e.getMessage());
-            if (e.getMessage().contains("Not connected")) {
-                running = false;
-            }
+            connected = false;
         }
     }
     
-    private void handleResponse(String response) {
-        if (response != null && !response.isEmpty()) {
-            System.out.println(response);
+    private void sendExecuteCommand(String command) throws IOException, ClassNotFoundException {
+        MessageExecute msg = new MessageExecute(command);
+        out.writeObject(msg);
+        out.flush();
+        readServerResponse();
+    }
+    
+    private void sendListUsers() throws IOException, ClassNotFoundException {
+        MessageListUsers msg = new MessageListUsers();
+        out.writeObject(msg);
+        out.flush();
+        readServerResponse();
+    }
+    
+    private void sendHelpCommand() throws IOException, ClassNotFoundException {
+        sendExecuteCommand("help");
+    }
+    
+    private void sendDisconnect() throws IOException {
+        MessageDisconnect msg = new MessageDisconnect();
+        out.writeObject(msg);
+        out.flush();
+        connected = false;
+        System.out.println("Disconnecting...");
+    }
+    
+    private void readServerResponse() throws IOException, ClassNotFoundException {
+        try {
+            Object response = in.readObject();
+            
+            if (response instanceof MessageExecuteResult) {
+                MessageExecuteResult result = (MessageExecuteResult) response;
+                if (result.result != null && !result.result.isEmpty()) {
+                    System.out.print(result.result);
+                    if (!result.result.endsWith("\n")) {
+                        System.out.println();
+                    }
+                }
+            } else if (response instanceof MessageListUsersResult) {
+                MessageListUsersResult result = (MessageListUsersResult) response;
+                System.out.println(result.toString());
+            } else if (response instanceof MessageConnectResult) {
+                // Игнорируем, так как уже обработали при подключении
+            }
+            
+        } catch (SocketTimeoutException e) {
+            // Таймаут - игнорируем
         }
     }
     
     private void printWelcomeMessage() {
-        System.out.println("REMOTE SHELL CLIENT");
-        System.out.println("Special commands enabled:");
-        System.out.println("  cd <dir>    - Change directory");
-        System.out.println("  pwd         - Show current directory");
-        System.out.println("  ls [args]   - List files");
-        System.out.println("  clear       - Clear screen");
-        System.out.println("  help        - Show help");
-        System.out.println("  exit        - Disconnect");
-        System.out.println("\nConnected to server. Type commands below:\n");
-    }
-    
-    private void printHelp() {
-        System.out.println("\nAVAILABLE COMMANDS:");
-        System.out.println("BASIC COMMANDS:");
-        System.out.println("  <command>       - Execute on remote server");
-        System.out.println("  help            - Show this help");
-        System.out.println("  exit            - Disconnect from server");
-        System.out.println();
-        System.out.println("FILE SYSTEM COMMANDS:");
-        System.out.println("  cd <directory>  - Change working directory");
-        System.out.println("  pwd             - Print working directory");
-        System.out.println("  ls [options]    - List directory contents");
-        System.out.println();
-        System.out.println("CLIENT COMMANDS:");
-        System.out.println("  clear           - Clear terminal screen");
-        System.out.println("  list/users      - List connected users");
-        System.out.println();
+        System.out.println("\n=== Remote Shell Client ===");
+        System.out.println("Connected as: " + username);
+        System.out.println("\nAvailable commands:");
+        System.out.println("  <command>      - Execute command on server");
+        System.out.println("  cd <dir>       - Change directory");
+        System.out.println("  pwd            - Show current directory");
+        System.out.println("  ls [args]      - List files");
+        System.out.println("  list/users     - List connected users");
+        System.out.println("  help           - Show help");
+        System.out.println("  clear          - Clear screen");
+        System.out.println("  exit           - Disconnect");
+        System.out.println("\nType commands below:\n");
     }
     
     private void clearScreen() {
@@ -126,36 +178,34 @@ public class RemoteShellClient {
                 System.out.flush();
             }
         } catch (Exception e) {
+            // Fallback
             for (int i = 0; i < 50; i++) {
                 System.out.println();
             }
         }
     }
     
-    private void handleExit() {
-        try {
-            commandWriter.sendExitCommand();
-            System.out.println("Disconnecting...");
-        } catch (IOException e) {
-            System.err.println("Error during disconnect");
-        }
-        running = false;
-    }
-    
-    private void cleanup() {
-        System.out.println("Cleaning up...");
-        commandWriter.close();
-        responseReader.stop();
-        try {
-            if (socket != null && !socket.isClosed()) {
-                socket.close();
+    private void disconnect() {
+        if (connected) {
+            try {
+                sendDisconnect();
+            } catch (IOException e) {
+                // Игнорируем ошибки при отключении
             }
-        } catch (IOException e) {
-            System.err.println("Error closing socket");
         }
+        
+        try {
+            if (out != null) out.close();
+            if (in != null) in.close();
+            if (socket != null && !socket.isClosed()) socket.close();
+        } catch (IOException e) {
+            System.err.println("Error closing connection: " + e.getMessage());
+        }
+        
         if (consoleScanner != null) {
             consoleScanner.close();
         }
+        
         System.out.println("Client stopped.");
     }
 }
