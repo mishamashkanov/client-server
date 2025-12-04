@@ -1,4 +1,4 @@
-package remoteshell;
+package csdev.client;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -13,7 +13,7 @@ public class RemoteShellClient {
     
     public RemoteShellClient(String host, int port) throws IOException {
         this.socket = new Socket(host, port);
-        this.socket.setSoTimeout(ProtocolConstants.SOCKET_TIMEOUT);
+        this.socket.setSoTimeout(Protocol.SOCKET_TIMEOUT);
         this.commandWriter = new CommandWriter(socket);
         this.responseReader = new ResponseReader(socket, this::handleResponse);
         this.consoleScanner = new Scanner(System.in);
@@ -27,7 +27,7 @@ public class RemoteShellClient {
             while (running && commandWriter.isConnected() && 
                    responseReader.isActive() && consoleScanner.hasNextLine()) {
                 
-                System.out.print(ProtocolConstants.PROMPT);
+                System.out.print(Protocol.PROMPT);
                 String input = consoleScanner.nextLine();
                 processCommand(input);
             }
