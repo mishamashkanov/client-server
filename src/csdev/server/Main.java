@@ -6,146 +6,21 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
+// Импорты общих классов
+import csdev.Protocol;
+import csdev.Message;
+import csdev.MessageConnect;
+import csdev.MessageConnectResult;
+import csdev.MessageExecute;
+import csdev.MessageExecuteResult;
+import csdev.MessageDisconnect;
+import csdev.MessageListUsers;
+import csdev.MessageListUsersResult;
+
 /**
  * Сервер удалённой консоли
  */
 public class Main {
-
-    // Константы протокола (должны быть в Protocol.java, но для простоты здесь)
-    public static class Protocol {
-        public static final int PORT = 8888;
-        public static final int SOCKET_TIMEOUT = 1000;
-        public static final int COMMAND_TIMEOUT = 30000;
-
-        public static final int CMD_CONNECT = 1;
-        public static final int CMD_DISCONNECT = 2;
-        public static final int CMD_EXECUTE = 3;
-        public static final int CMD_LIST_USERS = 4;
-        public static final int RESULT_OK = 0;
-        public static final int RESULT_ERROR = 1;
-    }
-
-    // Классы сообщений (должны быть в отдельных файлах, но для простоты здесь)
-    public static class Message implements Serializable {
-        private static final long serialVersionUID = 1L;
-        protected int id;
-
-        public Message(int id) {
-            this.id = id;
-        }
-
-        public int getID() {
-            return id;
-        }
-    }
-
-    public static class MessageConnect extends Message {
-        private static final long serialVersionUID = 1L;
-        public String userNic;
-        public String userFullName;
-
-        public MessageConnect(String userNic, String userFullName) {
-            super(Protocol.CMD_CONNECT);
-            this.userNic = userNic;
-            this.userFullName = userFullName;
-        }
-    }
-
-    public static class MessageConnectResult extends Message {
-        private static final long serialVersionUID = 1L;
-        public boolean success;
-        public String errorMessage;
-        public String currentDirectory;
-
-        public MessageConnectResult() {
-            super(Protocol.RESULT_OK);
-            this.success = true;
-            this.errorMessage = "";
-            this.currentDirectory = System.getProperty("user.dir");
-        }
-
-        public MessageConnectResult(String error) {
-            super(Protocol.RESULT_ERROR);
-            this.success = false;
-            this.errorMessage = error;
-            this.currentDirectory = "";
-        }
-    }
-
-    public static class MessageExecute extends Message {
-        private static final long serialVersionUID = 1L;
-        public String command;
-        public boolean isBackground;
-
-        public MessageExecute(String command, boolean isBackground) {
-            super(Protocol.CMD_EXECUTE);
-            this.command = command;
-            this.isBackground = isBackground;
-        }
-
-        public MessageExecute(String command) {
-            this(command, false);
-        }
-    }
-
-    public static class MessageExecuteResult extends Message {
-        private static final long serialVersionUID = 1L;
-        public boolean success;
-        public String output;
-        public String error;
-        public int exitCode;
-        public long executionTime;
-
-        public MessageExecuteResult(String output, int exitCode, long executionTime) {
-            super(Protocol.RESULT_OK);
-            this.success = true;
-            this.output = output;
-            this.error = "";
-            this.exitCode = exitCode;
-            this.executionTime = executionTime;
-        }
-
-        public MessageExecuteResult(String error) {
-            super(Protocol.RESULT_ERROR);
-            this.success = false;
-            this.output = "";
-            this.error = error;
-            this.exitCode = -1;
-            this.executionTime = 0;
-        }
-    }
-
-    public static class MessageDisconnect extends Message {
-        private static final long serialVersionUID = 1L;
-        public MessageDisconnect() {
-            super(Protocol.CMD_DISCONNECT);
-        }
-    }
-
-    public static class MessageListUsers extends Message {
-        private static final long serialVersionUID = 1L;
-        public MessageListUsers() {
-            super(Protocol.CMD_LIST_USERS);
-        }
-    }
-
-    public static class MessageListUsersResult extends Message {
-        private static final long serialVersionUID = 1L;
-        public String[] users;
-        public String errorMessage;
-
-        public MessageListUsersResult(String[] users) {
-            super(Protocol.RESULT_OK);
-            this.users = users;
-            this.errorMessage = "";
-        }
-
-        public MessageListUsersResult(String error) {
-            super(Protocol.RESULT_ERROR);
-            this.users = new String[0];
-            this.errorMessage = error;
-        }
-    }
 
     private static final int MAX_USERS = 50;
     private static final AtomicInteger activeUsers = new AtomicInteger(0);
@@ -219,10 +94,13 @@ public class Main {
             serv.setSoTimeout(Protocol.SOCKET_TIMEOUT);
             Socket sock = serv.accept();
             return sock;
-        } catch (SocketException e) {
+        } catch (SocketTimeoutException e) {
             // Таймаут - это нормально
+            return null;
         } catch (IOException e) {
-          
+            if (!getStopFlag()) {
+                System.err.println("Ошибка при accept: " + e.getMessage());
+            }
         }
         return null;
     }
@@ -393,7 +271,7 @@ class ServerThread extends Thread {
 
     public ServerThread(Socket s) throws IOException {
         sock = s;
-        s.setSoTimeout(Main.Protocol.SOCKET_TIMEOUT);
+        s.setSoTimeout(Protocol.SOCKET_TIMEOUT);
         os = new ObjectOutputStream(s.getOutputStream());
         is = new ObjectInputStream(s.getInputStream());
         addr = s.getInetAddress();
@@ -403,9 +281,9 @@ class ServerThread extends Thread {
     public void run() {
         try {
             while (true) {
-                Main.Message msg = null;
+                Message msg = null;
                 try {
-                    msg = (Main.Message) is.readObject();
+                    msg = (Message) is.readObject();
                 } catch (SocketTimeoutException e) {
                     // Таймаут - продолжаем цикл
                     continue;
@@ -422,21 +300,21 @@ class ServerThread extends Thread {
                 }
 
                 switch (msg.getID()) {
-                    case Main.Protocol.CMD_CONNECT:
-                        if (!connect((Main.MessageConnect) msg))
+                    case Protocol.CMD_CONNECT:
+                        if (!connect((MessageConnect) msg))
                             return;
                         break;
 
-                    case Main.Protocol.CMD_DISCONNECT:
+                    case Protocol.CMD_DISCONNECT:
                         disconnect();
                         return;
 
-                    case Main.Protocol.CMD_EXECUTE:
-                        executeCommand((Main.MessageExecute) msg);
+                    case Protocol.CMD_EXECUTE:
+                        executeCommand((MessageExecute) msg);
                         break;
 
-                    case Main.Protocol.CMD_LIST_USERS:
-                        listUsers((Main.MessageListUsers) msg);
+                    case Protocol.CMD_LIST_USERS:
+                        listUsers((MessageListUsers) msg);
                         break;
                 }
             }
@@ -447,16 +325,16 @@ class ServerThread extends Thread {
         }
     }
 
-    boolean connect(Main.MessageConnect msg) throws IOException {
+    boolean connect(MessageConnect msg) throws IOException {
         if (msg.userNic == null || msg.userNic.trim().isEmpty()) {
-            os.writeObject(new Main.MessageConnectResult("Имя пользователя не может быть пустым"));
+            os.writeObject(new MessageConnectResult("Имя пользователя не может быть пустым"));
             return false;
         }
 
         ServerThread old = register(msg.userNic, msg.userFullName);
         if (old == null) {
             // Успешное подключение
-            Main.MessageConnectResult result = new Main.MessageConnectResult();
+            MessageConnectResult result = new MessageConnectResult();
             result.currentDirectory = currentDirectory;
             os.writeObject(result);
 
@@ -464,16 +342,16 @@ class ServerThread extends Thread {
             String welcome = "Добро пожаловать в удалённую консоль!\n" +
                     "Текущая директория: " + currentDirectory + "\n" +
                     "Для справки используйте команду 'help'";
-            os.writeObject(new Main.MessageExecuteResult(welcome, 0, 0));
+            os.writeObject(new MessageExecuteResult(welcome, 0, 0));
             return true;
         } else {
-            os.writeObject(new Main.MessageConnectResult(
+            os.writeObject(new MessageConnectResult(
                     "Пользователь '" + old.userFullName + "' уже подключен как " + userNic));
             return false;
         }
     }
 
-    void executeCommand(Main.MessageExecute msg) throws IOException {
+    void executeCommand(MessageExecute msg) throws IOException {
         if (msg.command == null || msg.command.trim().isEmpty()) {
             sendError("Команда не может быть пустой");
             return;
@@ -486,7 +364,7 @@ class ServerThread extends Thread {
             sendHelp();
             return;
         } else if (command.equalsIgnoreCase("pwd")) {
-            os.writeObject(new Main.MessageExecuteResult(currentDirectory + "\n", 0, 0));
+            os.writeObject(new MessageExecuteResult(currentDirectory + "\n", 0, 0));
             return;
         } else if (command.startsWith("cd ")) {
             changeDirectory(command.substring(3).trim());
@@ -504,7 +382,7 @@ class ServerThread extends Thread {
         if (msg.isBackground) {
             // Фоновое выполнение
             executeBackgroundCommand(command);
-            os.writeObject(new Main.MessageExecuteResult(
+            os.writeObject(new MessageExecuteResult(
                     "Команда запущена в фоновом режиме\n", 0, 0));
         } else {
             // Синхронное выполнение
@@ -512,14 +390,14 @@ class ServerThread extends Thread {
                     () -> executeShellCommand(command));
 
             try {
-                CommandResult result = future.get(Main.Protocol.COMMAND_TIMEOUT, TimeUnit.MILLISECONDS);
+                CommandResult result = future.get(Protocol.COMMAND_TIMEOUT, TimeUnit.MILLISECONDS);
                 long executionTime = System.currentTimeMillis() - startTime;
 
                 String output = result.output;
                 if (!result.error.isEmpty()) {
                     output += "\nОшибка: " + result.error;
                 }
-                os.writeObject(new Main.MessageExecuteResult(
+                os.writeObject(new MessageExecuteResult(
                         output, result.exitCode, executionTime));
 
             } catch (TimeoutException e) {
@@ -607,7 +485,7 @@ class ServerThread extends Thread {
 
         if (dir.exists() && dir.isDirectory()) {
             currentDirectory = dir.getAbsolutePath();
-            os.writeObject(new Main.MessageExecuteResult(
+            os.writeObject(new MessageExecuteResult(
                     "Директория изменена на: " + currentDirectory + "\n", 0, 0));
         } else {
             sendError("Директория не существует: " + newDir);
@@ -623,15 +501,15 @@ class ServerThread extends Thread {
                 "  [command] & - выполнить команду в фоновом режиме\n" +
                 "  exit - отключиться от сервера\n" +
                 "\nЗапрещённые команды: rm -rf, shutdown, и другие опасные операции";
-        os.writeObject(new Main.MessageExecuteResult(help, 0, 0));
+        os.writeObject(new MessageExecuteResult(help, 0, 0));
     }
 
-    private void listUsers(Main.MessageListUsers msg) throws IOException {
+    private void listUsers(MessageListUsers msg) throws IOException {
         String[] users = Main.getUsers();
         if (users != null && users.length > 0) {
-            os.writeObject(new Main.MessageListUsersResult(users));
+            os.writeObject(new MessageListUsersResult(users));
         } else {
-            os.writeObject(new Main.MessageListUsersResult("Нет подключенных пользователей"));
+            os.writeObject(new MessageListUsersResult("Нет подключенных пользователей"));
         }
     }
 
@@ -660,7 +538,7 @@ class ServerThread extends Thread {
     }
 
     private void sendError(String message) throws IOException {
-        os.writeObject(new Main.MessageExecuteResult(message));
+        os.writeObject(new MessageExecuteResult(message));
     }
 
     private ServerThread register(String nic, String name) {
