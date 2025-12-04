@@ -1,4 +1,4 @@
-package remoteshell;
+package csdev.client;
 
 public class CommandParser {
     
@@ -24,16 +24,16 @@ public class CommandParser {
         
         if (lowerTrimmed.startsWith("cd ")) {
             String path = trimmed.substring(3).trim();
-            return new ParsedCommand(CommandType.CHANGE_DIR, ProtocolConstants.SPECIAL_CD, path);
+            return new ParsedCommand(CommandType.CHANGE_DIR, Protocol.SPECIAL_CD, path);
         }
         
         if (lowerTrimmed.equals("pwd")) {
-            return new ParsedCommand(CommandType.PRINT_DIR, ProtocolConstants.SPECIAL_PWD, "");
+            return new ParsedCommand(CommandType.PRINT_DIR, Protocol.SPECIAL_PWD, "");
         }
         
         if (lowerTrimmed.equals("ls") || lowerTrimmed.startsWith("ls ")) {
             String args = trimmed.substring(2).trim();
-            return new ParsedCommand(CommandType.LIST_FILES, ProtocolConstants.SPECIAL_LS, args);
+            return new ParsedCommand(CommandType.LIST_FILES, Protocol.SPECIAL_LS, args);
         }
         
         if (lowerTrimmed.equals("list") || lowerTrimmed.equals("users")) {
@@ -66,9 +66,15 @@ public class CommandParser {
             this.argument = argument;
         }
         
-        public CommandType getType() { return type; }
-        public String getSpecialPrefix() { return specialPrefix; }
-        public String getArgument() { return argument; }
+        public CommandType getType() { 
+            return type; 
+        }
+        public String getSpecialPrefix() { 
+            return specialPrefix; 
+        }
+        public String getArgument() { 
+            return argument; 
+        }
         public String getFullCommand() {
             if (specialPrefix.isEmpty()) {
                 return argument;
