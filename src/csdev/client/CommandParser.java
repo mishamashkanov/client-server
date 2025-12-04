@@ -1,5 +1,7 @@
 package csdev.client;
 
+import csdev.*;
+
 public class CommandParser {
     
     public static ParsedCommand parse(String input) {

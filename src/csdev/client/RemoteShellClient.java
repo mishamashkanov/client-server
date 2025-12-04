@@ -3,6 +3,7 @@ package csdev.client;
 import java.io.IOException;
 import java.net.Socket;
 import java.util.Scanner;
+import csdev.*;
 
 public class RemoteShellClient {
     private Socket socket;

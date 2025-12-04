@@ -1,6 +1,7 @@
 package csdev.client;
 
 import java.util.Scanner;
+import csdev.*;
 
 public class ClientLauncher {
     public static void main(String[] args) {
@@ -14,9 +15,9 @@ public class ClientLauncher {
             host = "localhost";
         }
         
-        System.out.print("Server port [" + Protocol.SERVER_PORT + "]: ");
+        System.out.print("Server port [" + Protocol.PORT + "]: ");
         String portInput = scanner.nextLine().trim();
-        int port = Protocol.SERVER_PORT;
+        int port = Protocol.PORT;
         if (!portInput.isEmpty()) {
             try {
                 port = Integer.parseInt(portInput);

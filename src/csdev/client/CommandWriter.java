@@ -3,6 +3,7 @@ package csdev.client;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import csdev.*;
 
 public class CommandWriter {
     private DataOutputStream out;

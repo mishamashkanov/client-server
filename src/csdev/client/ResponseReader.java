@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.Socket;
 import java.util.function.Consumer;
+import csdev.*;
 
 public class ResponseReader {
     private DataInputStream in;
