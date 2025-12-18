@@ -21,4 +21,6 @@ public class Protocol {
     public static final String SPECIAL_PWD = "pwd";
     public static final String SPECIAL_LS = "ls";
     public static final String SPECIAL_CLEAR = "clear";
+    public static final int MAX_COMMAND_LENGTH = 4096;
+    public static final int MAX_RESPONSE_LENGTH = 65536;
 }

@@ -33,7 +33,7 @@ public class CommandWriter {
             throw new IOException("Command too long");
         }
         
-        out.writeInt(ProtocolConstants.CMD_EXECUTE);
+      //  out.writeInt(ProtocolConstants.CMD_EXECUTE);
         byte[] commandBytes = command.getBytes(Protocol.ENCODING);
         out.writeInt(commandBytes.length);
         out.write(commandBytes);
